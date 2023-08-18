@@ -12,29 +12,26 @@ func main() {
 	profileName := flag.String("profileName", "", "The profile name to load credentials for. Only used if Access Key and Secret Key were not specified")
 	region := flag.String("region", "", "The AWS region where your S3 bucket is")
 	bucketName := flag.String("bucketName", "", "The name of your S3 bucket")
+	migrationId := flag.String("migrationId", "", "The identifier of this migration")
+	// TODO these will be needed later on
+	//keyPrefix := flag.String("keyPath", "", "The prefix to filter the returned keys")
+	//maxKeys := flag.Int("maxKeys", 1000, "The max number of keys to return")
 
 	flag.Parse()
 
 	fmt.Printf("Provided parameters: AK <%v>, SK <%v>, Profile <%v>, Region <%v>, Bucket <%v>\n", *accessKeyPtr, *secretKeyPtr, *profileName, *region, *bucketName)
 
-	s3Client, err := getS3Client(*accessKeyPtr, *secretKeyPtr, *profileName, *region)
-
+	migrationBucketAccessor, err := NewMigrationBucketAccessor(*accessKeyPtr, *secretKeyPtr, *profileName, *region, *bucketName, *migrationId)
 	if err != nil {
-		fmt.Printf("Error while creating the S3 Client: %v\n", err)
+		fmt.Printf("Error while creating the bucket accessor: %v\n", err)
 		os.Exit(2)
 	}
 
-	bucketObjects, err := findObjectsInBucket(s3Client, *bucketName)
+	err = migrationBucketAccessor.InitSSTableDescriptors()
 	if err != nil {
-		fmt.Printf("Error while retrieving the bucket contents: %v\n", err)
+		fmt.Printf("Error while creating the SSTable descriptors: %v\n", err)
 		os.Exit(2)
 	}
-
-	fmt.Printf("Found %v objects in bucket %v\n", len(bucketObjects), bucketName)
-	for i, bucketObject := range bucketObjects {
-		fmt.Printf("%v: %v (%v)\n", i, bucketObject.key, formatBucketSize(bucketObject.size))
-	}
-
 }
 
 func formatBucketSize(sizeInBytes int64) string {
@@ -43,8 +40,7 @@ func formatBucketSize(sizeInBytes int64) string {
 	const oneGB = oneMB * float64(1024)
 	const oneTB = oneGB * float64(1024)
 
-
-	floatSize :=float64(sizeInBytes)
+	floatSize := float64(sizeInBytes)
 	switch {
 	case floatSize < oneMB:
 		size := floatSize / oneKB
