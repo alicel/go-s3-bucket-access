@@ -11,4 +11,4 @@ COPY *.go ./
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o /go-s3-bucket-access
 
-ENTRYPOINT["./go-s3-bucket-access"]
+ENTRYPOINT ["/go-s3-bucket-access"]
