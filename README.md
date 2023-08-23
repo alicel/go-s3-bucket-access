@@ -34,7 +34,7 @@ To run the utility using a profile:
 
 ### Building it as a Docker image and running it as a container
 
-To build the image:
+To build the image (after cloning this repo locally):
 `docker build --no-cache --tag go-s3-bucket-access .`
 
 To run it as a container:
