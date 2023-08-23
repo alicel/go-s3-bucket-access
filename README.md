@@ -18,9 +18,11 @@ Credentials are required and can be passed in one of these two ways:
 You will also need to provide:
 - The AWS region in which the bucket is, as `region`
 - The name of the bucket, as `bucketName`
+- The identifier of your migration, as `migrationId`
 
 To run the utility with static credentials:
-`./go-s3-bucket-access -accessKey <my_ak> -secretKey <my_sk> -region <my_reg> -bucketName <my_bn>`
+`./go-s3-bucket-access -accessKey <my_ak> -secretKey <my_sk> -region <my_reg> -bucketName <my_bn> -migrationId <my_migration_id>`
 
 To run the utility using a profile:
-`./go-s3-bucket-access -profileName <my_pn> -region <my_reg> -bucketName <my_bn>`
+`./go-s3-bucket-access -profileName <my_pn> -region <my_reg> -bucketName <my_bn> -migrationId <my_migration_id>`
+

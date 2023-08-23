@@ -39,7 +39,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	fmt.Printf("Descriptors created and persisted to S3")
+	fmt.Printf("Descriptors created and persisted to S3\n")
 
 }
 
