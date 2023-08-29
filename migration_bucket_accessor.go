@@ -4,15 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/alicel/go-s3-bucket-access/config"
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	s3manager "github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"slices"
 	"strconv"
 	"strings"
 )
@@ -26,43 +24,27 @@ type MigrationGlobalState struct {
 	SSTableDescriptorKeyPrefix string `json:"ssTableDescriptorKeyPrefix"`
 }
 
-type EntityNames struct {
-	KeyspaceName      string `json:"keyspaceName"`
-	CqlTableName      string `json:"cqlTableName"`
-	SsTableNamePrefix string `json:"ssTableNamePrefix"`
-}
-
-type SSTable struct {
-	EntityNames       *EntityNames `json:"entityNames"`
-	Size              int64        `json:"size"`
-	KeyPath           string       `json:"keyPath"`
-	ComponentFileKeys []string     `json:"componentFileKeys"`
-}
-
 type MigrationBucketAccessor struct {
-	bucketName           string
+	accessorConfig       *config.AccessorConfig
 	s3Client             *s3.Client
 	s3uploader           *s3manager.Uploader
 	migrationGlobalState *MigrationGlobalState
-	k8sConfigMapName     string
 }
 
 const PageSize = 200
 
-func NewMigrationBucketAccessor(accessKey string, secretKey string, profileName string, region string,
-	bucketName string, k8sConfigMapName string, migrationId string) (*MigrationBucketAccessor, error) {
+func NewMigrationBucketAccessor(ac *config.AccessorConfig) (*MigrationBucketAccessor, error) {
 
-	s3Client, err := createS3Client(accessKey, secretKey, profileName, region)
+	s3Client, err := createS3Client(ac)
 	if err != nil {
 		return nil, err
 	}
 
 	migrationBucketAccessor := &MigrationBucketAccessor{
-		bucketName:           bucketName,
+		accessorConfig:       ac,
 		s3Client:             s3Client,
 		s3uploader:           s3manager.NewUploader(s3Client),
-		migrationGlobalState: NewMigrationGlobalState(migrationId),
-		k8sConfigMapName:     k8sConfigMapName,
+		migrationGlobalState: NewMigrationGlobalState(ac.MigrationId),
 	}
 	return migrationBucketAccessor, nil
 }
@@ -79,59 +61,10 @@ func NewMigrationGlobalState(migrationId string) *MigrationGlobalState {
 	}
 }
 
-func NewSSTable(entityNames *EntityNames, keyPrefix string) *SSTable {
-	return &SSTable{
-		EntityNames:       entityNames,
-		KeyPath:           keyPrefix,
-		Size:              0,
-		ComponentFileKeys: []string{},
-	}
-}
-
-func (sst *SSTable) addComponentFileKey(key string) {
-	sst.ComponentFileKeys = append(sst.ComponentFileKeys, key)
-}
-
-func (sst *SSTable) increaseSize(deltaSize int64) {
-	sst.Size = sst.Size + deltaSize
-}
-
-func createS3Client(accessKey string, secretKey string, profileName string, region string) (*s3.Client, error) {
-	var cfg aws.Config
-	var err error
-
-	if region == "" {
-		return nil, fmt.Errorf("missing mandatory AWS region parameter")
-	}
-
-	if (accessKey != "" && secretKey == "") || (accessKey == "" && secretKey != "") {
-		return nil, fmt.Errorf("incomplete AWS credentials: please specify both Access Key and Secret Key")
-	}
-
-	if accessKey != "" && secretKey != "" {
-		cfg = aws.Config{
-			Region:      region,
-			Credentials: credentials.NewStaticCredentialsProvider(accessKey, secretKey, ""),
-		}
-	} else if profileName != "" {
-		cfg, err = config.LoadDefaultConfig(context.Background(),
-			config.WithSharedConfigProfile(profileName),
-			config.WithRegion(region),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("unable to load s3 client from profile %v for region %v, %v", profileName, region, err)
-		}
-	} else {
-		return nil, fmt.Errorf("neither static credentials nor profile were specified: please provide either option")
-	}
-
-	return s3.NewFromConfig(cfg), nil
-}
-
 func (mba *MigrationBucketAccessor) InitAndPersistMigrationDescriptors() error {
 
 	listObjectsInputParams := &s3.ListObjectsV2Input{
-		Bucket: aws.String(mba.bucketName),
+		Bucket: aws.String(mba.accessorConfig.BucketName),
 	}
 
 	// Get the bucket contents with pagination
@@ -166,7 +99,7 @@ func (mba *MigrationBucketAccessor) InitAndPersistMigrationDescriptors() error {
 						true,
 						0)
 				} else {
-					if isDifferentSSTable(currentSSTable, extractKeyPath(objectKey), entityNames.SsTableNamePrefix) {
+					if currentSSTable.isDifferentSSTable(extractKeyPath(objectKey), entityNames.SsTableNamePrefix) {
 						ssTableSequenceNumber++
 						err := mba.persistSSTableDescriptor(currentSSTable, ssTableSequenceNumber)
 						if err != nil {
@@ -202,14 +135,6 @@ func (mba *MigrationBucketAccessor) InitAndPersistMigrationDescriptors() error {
 	return nil
 }
 
-func isSSTableComponentFile(key string) bool {
-	// go by extension for now, it may be refined in the future. the naming pattern is too variable
-	componentFileExtensions := []string{"CompressionInfo.db", "Data.db", "Digest.crc32", "Filter.db", "Partitions.db",
-		"Rows.db", "Statistics.db", "TOC.txt"}
-	fileExtensionStartIndex := strings.LastIndex(key, "-")
-	return slices.Contains(componentFileExtensions, key[fileExtensionStartIndex+1:])
-}
-
 func extractEntityNamesFromKey(key string) *EntityNames {
 	keyComponents := strings.Split(key, "/")
 
@@ -230,10 +155,6 @@ func extractKeyPath(key string) string {
 	return key[:strings.LastIndex(key, "/")]
 }
 
-func isDifferentSSTable(currentSSTable *SSTable, keyPath string, ssTableNamePrefix string) bool {
-	return (currentSSTable.KeyPath != keyPath) || (currentSSTable.EntityNames.SsTableNamePrefix != ssTableNamePrefix)
-}
-
 func (mba *MigrationBucketAccessor) persistSSTableDescriptor(ssTable *SSTable, ssTableSequenceNumber int) error {
 	// Create JSON content from struct
 	marshalledContent, err := json.Marshal(ssTable)
@@ -251,7 +172,7 @@ func (mba *MigrationBucketAccessor) persistSSTableDescriptor(ssTable *SSTable, s
 		strconv.Itoa(ssTableSequenceNumber),
 		ssTableUniqueIdentifier}, "/")
 
-	return persistObjectToBucket(mba.s3uploader, mba.bucketName, descriptorKey, ssTableDescriptorJson)
+	return persistObjectToBucket(mba.s3uploader, mba.accessorConfig.BucketName, descriptorKey, ssTableDescriptorJson)
 }
 
 func (mba *MigrationBucketAccessor) persistMigrationGlobalStateDescriptor() error {
@@ -263,24 +184,13 @@ func (mba *MigrationBucketAccessor) persistMigrationGlobalStateDescriptor() erro
 	migrationGlobalStateDescriptorJson := string(marshalledContent)
 	descriptorName := strings.Join([]string{"globalState", mba.migrationGlobalState.MigrationId}, "-")
 	descriptorKey := strings.Join([]string{mba.migrationGlobalState.MigrationId, descriptorName}, "/")
-	err = persistObjectToBucket(mba.s3uploader, mba.bucketName, descriptorKey, migrationGlobalStateDescriptorJson)
+	err = persistObjectToBucket(mba.s3uploader, mba.accessorConfig.BucketName, descriptorKey, migrationGlobalStateDescriptorJson)
 	if err != nil {
 		return err
 	}
 
 	// persist the relevant migration information to the k8s config map
-	stateMap := make(map[string]string)
-	stateMap[strings.Join([]string{"sstable-descriptor-key-prefix", mba.migrationGlobalState.MigrationId}, "-")] = mba.migrationGlobalState.SSTableDescriptorKeyPrefix
-	stateMap[strings.Join([]string{"total-sstable-count", mba.migrationGlobalState.MigrationId}, "-")] = strconv.Itoa(mba.migrationGlobalState.SSTableCount)
-	if mba.k8sConfigMapName != "" {
-		err = writeStateToConfigMap(stateMap)
-		fmt.Printf("Written state to k8s configMap for migrationId %v\n", mba.migrationGlobalState.MigrationId)
-	} else {
-		fmt.Printf("Disabled functionality that writes state to k8s configMap for migrationId %v.\nThe state to be written would have been:\n", mba.migrationGlobalState.MigrationId)
-		for k, v := range stateMap {
-			fmt.Printf("StateMap entry: %v --> %v\n", k, v)
-		}
-	}
+	err = mba.writeStateToConfigMap()
 
 	return err
 }
@@ -298,44 +208,30 @@ func (mba *MigrationBucketAccessor) updateMigrationGlobalState(incrKeyspaceCount
 	mba.migrationGlobalState.DataSize = mba.migrationGlobalState.DataSize + dataSizeDelta
 }
 
-// rename to indicate which config map it writes to
-func writeStateToConfigMap(stateMap map[string]string) error {
+func (mba *MigrationBucketAccessor) writeStateToConfigMap() error {
 
-	//TODO populate with the right values
-	config := &rest.Config{
-		Host:                "",
-		APIPath:             "",
-		ContentConfig:       rest.ContentConfig{},
-		Username:            "",
-		Password:            "",
-		BearerToken:         "",
-		BearerTokenFile:     "",
-		Impersonate:         rest.ImpersonationConfig{},
-		AuthProvider:        nil,
-		AuthConfigPersister: nil,
-		ExecProvider:        nil,
-		TLSClientConfig:     rest.TLSClientConfig{},
-		UserAgent:           "",
-		DisableCompression:  false,
-		Transport:           nil,
-		WrapTransport:       nil,
-		QPS:                 0,
-		Burst:               0,
-		RateLimiter:         nil,
-		WarningHandler:      nil,
-		Timeout:             0,
-		Dial:                nil,
-		Proxy:               nil,
+	stateMap := make(map[string]string)
+	stateMap[strings.Join([]string{"sstable-descriptor-key-prefix", mba.migrationGlobalState.MigrationId}, "-")] = mba.migrationGlobalState.SSTableDescriptorKeyPrefix
+	stateMap[strings.Join([]string{"total-sstable-count", mba.migrationGlobalState.MigrationId}, "-")] = strconv.Itoa(mba.migrationGlobalState.SSTableCount)
+
+	if mba.accessorConfig.K8sConfigMapNamespace == "" || mba.accessorConfig.K8sConfigMapName == "" {
+		fmt.Printf("Disabled functionality that writes state to k8s configMap for migrationId %v.\nThe state to be written would have been:\n", mba.migrationGlobalState.MigrationId)
+		for k, v := range stateMap {
+			fmt.Printf("StateMap entry: %v --> %v\n", k, v)
+		}
+		return nil
+	}
+
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		panic(err.Error())
 	}
 	clientSet, err := kubernetes.NewForConfig(config)
 
 	// Retrieve the existing ConfigMap
-	// TODO populate with the right values
-	namespace := "namespace"
-	configMapName := "template-conf"
-	configMap, err := clientSet.CoreV1().ConfigMaps(namespace).Get(context.Background(), configMapName, metav1.GetOptions{})
+	configMap, err := clientSet.CoreV1().ConfigMaps(mba.accessorConfig.K8sConfigMapNamespace).Get(context.Background(), mba.accessorConfig.K8sConfigMapName, metav1.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("error retrieving the k8s configMap with namespace %v and name %v, due to %v", namespace, configMapName, err)
+		return fmt.Errorf("error retrieving the k8s configMap with namespace %v and name %v, due to %v", mba.accessorConfig.K8sConfigMapNamespace, mba.accessorConfig.K8sConfigMapName, err)
 	}
 
 	// Modify the data in the ConfigMap
@@ -344,24 +240,16 @@ func writeStateToConfigMap(stateMap map[string]string) error {
 	}
 
 	// Update the ConfigMap
-	updatedConfigMap, err := clientSet.CoreV1().ConfigMaps(namespace).Update(context.Background(), configMap, metav1.UpdateOptions{})
+	updatedConfigMap, err := clientSet.CoreV1().ConfigMaps(mba.accessorConfig.K8sConfigMapNamespace).Update(context.Background(), configMap, metav1.UpdateOptions{})
 	if err != nil {
-		return fmt.Errorf("error updating the k8s configMap with namespace %v and name %v, due to %v", namespace, configMapName, err)
+		return fmt.Errorf("error updating the k8s configMap with namespace %v and name %v, due to %v", mba.accessorConfig.K8sConfigMapNamespace, mba.accessorConfig.K8sConfigMapName, err)
 	}
 
 	for stateKey, _ := range stateMap {
 		fmt.Printf("Updated configMap with: %v --> %v\n", stateKey, updatedConfigMap.Data[stateKey])
 	}
+
+	fmt.Printf("Written state to k8s configMap for migrationId %v\n", mba.migrationGlobalState.MigrationId)
+
 	return nil
 }
-
-// TODO probably unnecessary - should be ok to remove
-//func (mba *MigrationBucketAccessor) GetMigrationGlobalDescriptor() (string, error) {
-//
-//	descriptorKey := strings.Join([]string{mba.migrationId, "globalState"}, "/")
-//	descriptorJsonContent, err := retrieveObjectContentFromBucket(mba.s3Client, mba.bucketName, descriptorKey)
-//	if err != nil {
-//		return "", err
-//	}
-//	return descriptorJsonContent, nil
-//}

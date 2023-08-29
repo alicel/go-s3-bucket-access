@@ -7,6 +7,39 @@ the following descriptors in the same bucket:
 This program can also write state to a specified k8s config map: at the moment, this consists of the prefix common to 
 all SSTable descriptor S3 keys and the total number of SSTables. This is optional and only happens if a config map is specified. 
 
+#### Example SSTable descriptor
+
+S3 key: `mig001/SSTableDescriptors/1/bb-5-bti-1`
+
+Content:
+```agsl
+{
+	"entityNames": {
+		"keyspaceName": "baselines",
+		"cqlTableName": "iot",
+		"ssTableNamePrefix": "bb-5-bti"
+	},
+	"size": 357421328,
+	"keyPath": "baselines_iot_node0/home/automaton/dse_data/cassandra/baselines/iot-3e2d0c602b0311ee80bfa378d3cf1972/snapshots/baselines_backup_node0",
+	"componentFileKeys": ["baselines_iot_node0/home/automaton/dse_data/cassandra/baselines/iot-3e2d0c602b0311ee80bfa378d3cf1972/snapshots/baselines_backup_node0/bb-5-bti-CompressionInfo.db", "baselines_iot_node0/home/automaton/dse_data/cassandra/baselines/iot-3e2d0c602b0311ee80bfa378d3cf1972/snapshots/baselines_backup_node0/bb-5-bti-Data.db", "baselines_iot_node0/home/automaton/dse_data/cassandra/baselines/iot-3e2d0c602b0311ee80bfa378d3cf1972/snapshots/baselines_backup_node0/bb-5-bti-Digest.crc32", "baselines_iot_node0/home/automaton/dse_data/cassandra/baselines/iot-3e2d0c602b0311ee80bfa378d3cf1972/snapshots/baselines_backup_node0/bb-5-bti-Filter.db", "baselines_iot_node0/home/automaton/dse_data/cassandra/baselines/iot-3e2d0c602b0311ee80bfa378d3cf1972/snapshots/baselines_backup_node0/bb-5-bti-Partitions.db", "baselines_iot_node0/home/automaton/dse_data/cassandra/baselines/iot-3e2d0c602b0311ee80bfa378d3cf1972/snapshots/baselines_backup_node0/bb-5-bti-Rows.db", "baselines_iot_node0/home/automaton/dse_data/cassandra/baselines/iot-3e2d0c602b0311ee80bfa378d3cf1972/snapshots/baselines_backup_node0/bb-5-bti-Statistics.db", "baselines_iot_node0/home/automaton/dse_data/cassandra/baselines/iot-3e2d0c602b0311ee80bfa378d3cf1972/snapshots/baselines_backup_node0/bb-5-bti-TOC.txt"]
+}
+```
+#### Example global descriptor
+
+S3 Key: `mig001/globalState-mig001`
+
+Content:
+```agsl
+{
+	"migrationId": "mig001",
+	"keyspaceCount": 1,
+	"cqlTableCount": 2,
+	"ssTableCount": 21,
+	"dataSize": 2433884226,
+	"ssTableDescriptorKeyPrefix": "mig001/SSTableDescriptors"
+}
+```
+
 ### Building it
 To build it, run`go build` from the project root directory. You may need to pull in some dependencies using `go get`.
 

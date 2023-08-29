@@ -3,11 +3,38 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/alicel/go-s3-bucket-access/config"
 	"github.com/aws/aws-sdk-go-v2/aws"
+	s3config "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	s3manager "github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"strings"
 )
+
+func createS3Client(ac *config.AccessorConfig) (*s3.Client, error) {
+	var cfg aws.Config
+	var err error
+
+	if ac.AccessKey != "" && ac.SecretKey != "" {
+		cfg = aws.Config{
+			Region:      ac.Region,
+			Credentials: credentials.NewStaticCredentialsProvider(ac.AccessKey, ac.SecretKey, ""),
+		}
+	} else if ac.ProfileName != "" {
+		cfg, err = s3config.LoadDefaultConfig(context.Background(),
+			s3config.WithSharedConfigProfile(ac.ProfileName),
+			s3config.WithRegion(ac.Region),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("unable to load s3 client from profile %v for region %v, %v", ac.ProfileName, ac.Region, err)
+		}
+	} else {
+		return nil, fmt.Errorf("neither static credentials nor profile were specified: please provide either option")
+	}
+
+	return s3.NewFromConfig(cfg), nil
+}
 
 func persistObjectToBucket(s3uploader *s3manager.Uploader, bucketName string, objectKey string, objectContent string) error {
 
