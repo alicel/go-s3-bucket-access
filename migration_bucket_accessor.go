@@ -239,7 +239,7 @@ func (mba *MigrationBucketAccessor) writeStateToConfigMap() error {
 		configMap.Data[stateKey] = stateValue
 	}
 
-	// Update the ConfigMap
+	// Update the ConfigMap, persisting the modified data
 	updatedConfigMap, err := clientSet.CoreV1().ConfigMaps(mba.accessorConfig.K8sConfigMapNamespace).Update(context.Background(), configMap, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("error updating the k8s configMap with namespace %v and name %v, due to %v", mba.accessorConfig.K8sConfigMapNamespace, mba.accessorConfig.K8sConfigMapName, err)
