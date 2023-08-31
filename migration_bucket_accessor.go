@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/alicel/go-s3-bucket-access/config"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	s3manager "github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -25,7 +24,7 @@ type MigrationGlobalState struct {
 }
 
 type MigrationBucketAccessor struct {
-	accessorConfig       *config.AccessorConfig
+	accessorConfig       *AccessorConfig
 	s3Client             *s3.Client
 	s3uploader           *s3manager.Uploader
 	migrationGlobalState *MigrationGlobalState
@@ -33,7 +32,7 @@ type MigrationBucketAccessor struct {
 
 const PageSize = 200
 
-func NewMigrationBucketAccessor(ac *config.AccessorConfig) (*MigrationBucketAccessor, error) {
+func NewMigrationBucketAccessor(ac *AccessorConfig) (*MigrationBucketAccessor, error) {
 
 	s3Client, err := createS3Client(ac)
 	if err != nil {

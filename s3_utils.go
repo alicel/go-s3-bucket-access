@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/alicel/go-s3-bucket-access/config"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	s3config "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -12,7 +11,7 @@ import (
 	"strings"
 )
 
-func createS3Client(ac *config.AccessorConfig) (*s3.Client, error) {
+func createS3Client(ac *AccessorConfig) (*s3.Client, error) {
 	var cfg aws.Config
 	var err error
 

@@ -2,12 +2,11 @@ package main
 
 import (
 	"fmt"
-	cfg "github.com/alicel/go-s3-bucket-access/config"
 	"os"
 )
 
 func main() {
-	conf, err := cfg.NewAccessorConfig().ParseAndValidate()
+	conf, err := NewAccessorConfig().ParseAndValidate()
 	migrationBucketAccessor, err := NewMigrationBucketAccessor(conf)
 	if err != nil {
 		fmt.Printf("Error while creating the bucket accessor: %v\n", err)
